@@ -43,12 +43,12 @@ func newTestTx(signer types.Signer, nonce uint64, amount int64) *types.Transacti
 
 // TestKmerkleTree_MultipleClusters tests multiple cluster scenarios
 func TestKmerkleTree_MultipleClusters(t *testing.T) {
-	// 1. Setup environment
+	// Setup environment
 	signer := types.LatestSigner(params.TestChainConfig)
 	const totalTxCount = 5000
 	const clusterCount = 256
 
-	// 2. Generate 1000 transactions and randomly distribute them into 32 clusters
+	// Generate transactions and randomly distribute them into clusterCount clusters
 	t.Logf("Generating %d transactions and randomly distributing them into %d clusters...", totalTxCount, clusterCount)
 	allTxs := make([]*types.Transaction, totalTxCount)
 	clusters := make(map[int][]*types.Transaction)
@@ -68,7 +68,7 @@ func TestKmerkleTree_MultipleClusters(t *testing.T) {
 		clusters[clusterID] = append(clusters[clusterID], tx)
 	}
 
-	// 3. Build K-merkle tree with all 1000 transactions
+	// Build K-merkle tree with all transactions
 	t.Log("Building K-merkle tree with all transactions...")
 	startTime := time.Now()
 	tree := NewFromTransactions(allTxs)
@@ -76,7 +76,7 @@ func TestKmerkleTree_MultipleClusters(t *testing.T) {
 	t.Logf("K-merkle tree built, time taken: %v", buildDuration)
 	t.Logf("Tree root hash: %s", tree.Root.Hash.Hex())
 
-	// 4. Define test cases (based on number of requested clusters)
+	// Define test cases (based on number of requested clusters)
 	testCases := []struct {
 		name              string
 		clustersToRequest int // Number of clusters to request transactions from
@@ -90,7 +90,7 @@ func TestKmerkleTree_MultipleClusters(t *testing.T) {
 		{"Requesting txs from 32 clusters", 32},
 	}
 
-	// 5. Execute and assert for each test case
+	// Execute and assert for each test case
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Collect transactions from requested clusters
@@ -110,7 +110,7 @@ func TestKmerkleTree_MultipleClusters(t *testing.T) {
 			requiredHashesCount := tree.RequiredHashCountForTxs(txsToVerify)
 			calcDuration := time.Since(startTime)
 
-			t.Logf(">>> Result: Verifying %d transactions from %d clusters requires %d additional hashes, calculation took: %v",
+			t.Logf("\n>>> Result: Verifying %d transactions from %d clusters requires %d additional hashes, calculation took: %v",
 				txCountInCluster, tc.clustersToRequest, requiredHashesCount, calcDuration)
 
 			// Assertion and logic verification
@@ -124,15 +124,13 @@ func TestKmerkleTree_MultipleClusters(t *testing.T) {
 				}
 			}
 
-			// Boundary assertion: when requesting all clusters, required hashes must be 0
+			// when requesting all clusters, required hashes must be 0
 			if tc.clustersToRequest == clusterCount {
 				if requiredHashesCount != 0 {
 					t.Errorf("Error: Expected 0 required hashes when all clusters are requested, but got %d", requiredHashesCount)
 				}
 			}
 
-			// K-merkle tree's theoretical upper limit for required hashes is approximately N * logK(M),
-			// where N is the number of target transactions and M is the total number of transactions.
 			// A more relaxed but absolutely correct assertion is that the required hash count should not exceed the total transaction count.
 			if requiredHashesCount >= totalTxCount {
 				t.Errorf("Error: Required hash count (%d) should not be greater than or equal to total transaction count (%d)", requiredHashesCount, totalTxCount)

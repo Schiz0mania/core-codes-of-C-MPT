@@ -43,12 +43,12 @@ func newTestTx(signer types.Signer, nonce uint64, amount int64) *types.Transacti
 }
 
 func TestCalculateRequiredHashes_Clustered(t *testing.T) {
-	// 1. Setup simulation environment
+	// Setup simulation environment
 	signer := types.LatestSigner(params.TestChainConfig)
 	const totalTxCount = 5000
 	const clusterCount = 256
 
-	// 1.1 Generate 32 fixed, random prefixes as cluster keys
+	// Generate clusterCount fixed, random prefixes as cluster keys
 	prefixes := make([][]byte, clusterCount)
 	for i := 0; i < clusterCount; i++ {
 		prefix := make([]byte, 8) // Use 8-byte prefixes
@@ -58,7 +58,7 @@ func TestCalculateRequiredHashes_Clustered(t *testing.T) {
 		prefixes[i] = prefix
 	}
 
-	// 1.2 Create 1000 transactions and group them into 32 clusters
+	// Create transactions and group them into  clusterCount clusters
 	t.Logf("Generating %d transactions into %d clusters...", totalTxCount, clusterCount)
 	// Use a map to store clusters: key is prefix, value is list of transactions under that prefix
 	clusters := make(map[string][]*types.Transaction)
@@ -75,7 +75,7 @@ func TestCalculateRequiredHashes_Clustered(t *testing.T) {
 		txToPrefix[tx.Hash()] = prefix
 	}
 
-	// 2. Build the clustered MPT
+	// Build the clustered MPT
 	t.Log("Building clustered MPT using BuildCMPTTree...")
 	trie := NewTrie()
 	builtTrie, duration := BuildCMPTTree(trie, clusters)
@@ -83,7 +83,7 @@ func TestCalculateRequiredHashes_Clustered(t *testing.T) {
 	t.Logf("MPT built in %v with %d leaves (one for each cluster).", duration, len(clusters))
 	t.Logf("Tree root hash: %s", trie.Root.GetHash().Hex())
 
-	// 3. Define test cases (based on number of clusters requested)
+	// Define test cases (based on number of clusters requested)
 	testCases := []struct {
 		name              string
 		clustersToRequest int // Number of clusters to request transactions from
@@ -97,10 +97,10 @@ func TestCalculateRequiredHashes_Clustered(t *testing.T) {
 		{"Requesting txs from 32 cluster", 32},
 	}
 
-	// 4. Execute and assert
+	// Execute and assert
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// 4.1 Prepare input: take all transactions from each of the specified number of clusters
+			// Prepare input: take all transactions from each of the specified number of clusters
 			var requestedTxs []*types.Transaction
 			for i := 0; i < tc.clustersToRequest; i++ {
 				prefixStr := string(prefixes[i])
@@ -110,8 +110,8 @@ func TestCalculateRequiredHashes_Clustered(t *testing.T) {
 				}
 			}
 
-			// 4.2 Core adaptation: Convert the list of requested transactions to their unique prefixes
-			// Because CalculateRequiredHashes2 requires MPT keys
+			// Convert the list of requested transactions to their unique prefixes
+
 			uniquePrefixes := make(map[string]bool)
 			for _, tx := range requestedTxs {
 				prefix := txToPrefix[tx.Hash()]
@@ -124,8 +124,7 @@ func TestCalculateRequiredHashes_Clustered(t *testing.T) {
 				requestedKeys = append(requestedKeys, keyToNibbles([]byte(prefixStr)))
 			}
 
-			// 4.3 Call the function and perform assertions
-			// Note: The second parameter here is MPT keys (prefixes), not transaction hashes
+			// Call the function and perform assertions
 			startTime := time.Now()
 			requiredHashes := trie.CalculateRequiredHashes2(requestedKeys)
 			calcDuration := time.Since(startTime)
