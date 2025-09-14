@@ -140,4 +140,4 @@ mytrees/
 
 ---
 
-> This project adheres to the principles of reproducibility and transparency. All synthetic experiments and key implementations are directly runnable locally. For further extension or integration into Geth environments, refer to the article’s appendix and code comments.
+> This project adheres to the principles of reproducibility and transparency. All synthetic experiments and key implementations are directly runnable locally. For further extension or integration into Geth environments, refer to the article setup.
