@@ -39,12 +39,12 @@ func newTestTx(signer types.Signer, nonce uint64, amount int64) *types.Transacti
 
 // TestGetRequiredHashesForTxs_MPT tests the scenario with multiple clusters for MPT
 func TestCalculateRequiredHashes_MPT(t *testing.T) {
-	// 1. Setup simulation environment
+	// Setup simulation environment
 	signer := types.LatestSigner(params.TestChainConfig)
 	const totalTxCount = 5000
 	const clusterCount = 256
 
-	// 1.1 Generate 32 fixed, random prefixes as cluster keys
+	// random prefixes as cluster keys
 	prefixes := make([][]byte, clusterCount)
 	for i := 0; i < clusterCount; i++ {
 		prefix := make([]byte, 8) // Use 8-byte prefix
@@ -54,7 +54,7 @@ func TestCalculateRequiredHashes_MPT(t *testing.T) {
 		prefixes[i] = prefix
 	}
 
-	// 1.2 Create 1000 transactions and group them into 32 clusters
+	// Create transactions and group them into clusters
 	t.Logf("Generating %d transactions into %d clusters...", totalTxCount, clusterCount)
 	// Use map to store clusters: key is prefix, value is list of transactions under that prefix
 	clusters := make(map[string][]*types.Transaction)
@@ -77,7 +77,7 @@ func TestCalculateRequiredHashes_MPT(t *testing.T) {
 	t.Logf("MPT build time: %v", duration)
 	t.Logf("Tree root hash: %s", trie.Root.GetHash().Hex())
 
-	// 3. Define test cases (based on number of requested clusters)
+	// Define test cases (based on number of requested clusters)
 	testCases := []struct {
 		name              string
 		clustersToRequest int // Number of clusters to request transactions from
@@ -91,7 +91,7 @@ func TestCalculateRequiredHashes_MPT(t *testing.T) {
 		{"Requesting txs from 32 clusters", 32},
 	}
 
-	// 4. Execute and assert
+	// Execute and assert
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Collect all transactions from requested clusters
@@ -115,8 +115,8 @@ func TestCalculateRequiredHashes_MPT(t *testing.T) {
 			startTime := time.Now()
 			needs := trie.CalculateRequiredHashes2(requestedTxs)
 			calcDuration := time.Since(startTime)
-			t.Logf("For %d clusters (%d transactions), required hashes: %d (calculation took %v)",
-				tc.clustersToRequest, len(requestedTxs), needs, calcDuration)
+
+			t.Logf("\n>>> Result: Verifying %d transactions from %d clusters requires %d additional hashes, calculation took: %v", len(requestedTxs), tc.clustersToRequest, needs, calcDuration)
 
 			// Assertion logic
 			if tc.clustersToRequest == 0 {

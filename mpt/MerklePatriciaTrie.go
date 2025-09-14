@@ -12,60 +12,62 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// TrieNode 接口定义
+// TrieNode interface defines basic operations for MPT nodes
 type TrieNode interface {
 	GetPath() []byte
 	SetPath(path []byte)
 	GetHash() common.Hash
 }
 
-// FullNode 表示完整的MPT节点
+// FullNode represents a full MPT node with 16 children branches and one value node
 type FullNode struct {
-	Path     []byte
-	Children [17]TrieNode // 0-15: 十六进制字符, 16: 值节点
-	Flags    interface{}
-	HashVal  common.Hash
+	Path     []byte       // Path of this node in the trie
+	Children [17]TrieNode // 0-15: hex character branches, 16: value node
+	Flags    interface{}  // Node flags (for future use)
+	HashVal  common.Hash  // Hash value of this node
 }
 
 func (f *FullNode) GetPath() []byte      { return f.Path }
 func (f *FullNode) SetPath(path []byte)  { f.Path = path }
 func (f *FullNode) GetHash() common.Hash { return f.HashVal }
 
-// ShortNode 表示短节点
+// ShortNode represents a shortcut node that compresses multiple nodes
 type ShortNode struct {
-	Path    []byte
-	Key     []byte
-	Val     TrieNode
-	Flags   interface{}
-	hashVal common.Hash
+	Path    []byte      // Path of this node in the trie
+	Key     []byte      // Key segment for this short node
+	Val     TrieNode    // Value node (can be any TrieNode type)
+	Flags   interface{} // Node flags (for future use)
+	hashVal common.Hash // Hash value of this node
 }
 
 func (s *ShortNode) GetPath() []byte      { return s.Path }
 func (s *ShortNode) SetPath(path []byte)  { s.Path = path }
 func (s *ShortNode) GetHash() common.Hash { return s.hashVal }
 
-// HashNode 表示哈希节点
+// HashNode represents a leaf node containing hashed data
 type HashNode struct {
-	Pre   []byte
-	Key   []byte
-	Value []byte
-	Hash  common.Hash
-	Path  []byte
+	Pre   []byte      // Prefix (nibbles) for this node
+	Key   []byte      // Full key for this node
+	Value []byte      // Value stored in this leaf node
+	Hash  common.Hash // Hash value of this node
+	Path  []byte      // Path of this node in the trie
 }
 
 func (h *HashNode) GetPath() []byte      { return h.Path }
 func (h *HashNode) SetPath(path []byte)  { h.Path = path }
 func (h *HashNode) GetHash() common.Hash { return h.Hash }
 
-// Trie 表示MPT结构
+// Trie represents the Merkle Patricia Trie structure
 type Trie struct {
-	Root TrieNode
+	Root TrieNode // Root node of the trie
 }
 
+// NewTrie creates a new empty Merkle Patricia Trie
 func NewTrie() *Trie {
 	return &Trie{}
 }
 
+// keyToNibbles converts a byte slice to its nibble representation
 func keyToNibbles(key []byte) []byte {
 	nibbles := make([]byte, len(key)*2)
 	for i, b := range key {
@@ -75,6 +77,7 @@ func keyToNibbles(key []byte) []byte {
 	return nibbles
 }
 
+// nibblesToKey converts nibbles back to a byte slice
 func nibblesToKey(nibbles []byte) []byte {
 	if len(nibbles)%2 != 0 {
 		nibbles = append(nibbles, 0)
@@ -86,6 +89,7 @@ func nibblesToKey(nibbles []byte) []byte {
 	return key
 }
 
+// Insert adds a key-value pair to the trie
 func (t *Trie) Insert(key, value []byte) error {
 	if len(key) == 0 {
 		return errors.New("key cannot be empty")
@@ -101,8 +105,10 @@ func (t *Trie) Insert(key, value []byte) error {
 	return nil
 }
 
+// insert recursively inserts a key-value pair into the trie
 func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNode, error) {
 	if n == nil {
+		// Create a new leaf node when reaching an empty branch
 		return true, &HashNode{
 			Pre:   key,
 			Key:   nibblesToKey(append(path, key...)),
@@ -118,6 +124,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 
 		switch {
 		case matchlen == len(nodeKeyNibbles):
+			// Full match with short node key, continue insertion in child
 			newPath := append(path, nodeKeyNibbles...)
 			dirty, nn, err := t.insert(node.Val, newPath, key[matchlen:], value)
 			if err != nil {
@@ -134,6 +141,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 			}, nil
 
 		case matchlen == len(key):
+			// New key is a prefix of the short node key, create a branch
 			branch := &FullNode{}
 			branch.Children[16] = &HashNode{Value: value}
 			branch.Path = nibblesToKey(append(path, key...))
@@ -152,6 +160,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 			}, nil
 
 		case matchlen == 0:
+			// No common prefix, create a new branch node
 			branch := &FullNode{}
 			leaf := &HashNode{
 				Path:  nibblesToKey(append(path, key...)),
@@ -172,6 +181,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 			return true, branch, nil
 
 		default:
+			// Partial match, split the short node and create a branch
 			branch := &FullNode{}
 			branch.Path = nibblesToKey(append(path, key[:matchlen]...))
 			if matchlen < len(nodeKeyNibbles) && int(nodeKeyNibbles[matchlen]) < 16 {
@@ -205,6 +215,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 		if int(key[0]) >= 16 {
 			return false, n, fmt.Errorf("invalid nibble value: %d", key[0])
 		}
+		// Continue insertion in the appropriate child branch
 		dirty, nn, err := t.insert(node.Children[key[0]], append(path, key[0]), key[1:], value)
 		if err != nil || !dirty {
 			return false, n, err
@@ -218,6 +229,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 		return true, newNode, nil
 
 	case *HashNode:
+		// Resolve hash node and continue insertion
 		rn, err := t.resolveAndTrack(node, key, path)
 		if err != nil {
 			return false, nil, err
@@ -233,6 +245,7 @@ func (t *Trie) insert(n TrieNode, path, key []byte, value []byte) (bool, TrieNod
 	}
 }
 
+// prefixLen returns the length of the common prefix between two byte slices
 func prefixLen(a, b []byte) int {
 	minLen := len(a)
 	if len(b) < minLen {
@@ -246,6 +259,7 @@ func prefixLen(a, b []byte) int {
 	return minLen
 }
 
+// resolveAndTrack processes HashNode during insertion
 func (t *Trie) resolveAndTrack(n *HashNode, key2, path []byte) (TrieNode, error) {
 	l := prefixLen(n.Pre, key2)
 	switch {
@@ -253,11 +267,13 @@ func (t *Trie) resolveAndTrack(n *HashNode, key2, path []byte) (TrieNode, error)
 		if bytes.Equal(n.Pre, key2) {
 			return nil, errors.New("node exists")
 		}
+		// Create a full node with the hash node as value
 		f := &FullNode{}
 		f.Path = nibblesToKey(path)
 		f.Children[16] = &HashNode{Value: n.Value}
 		return f, nil
 	case l != 0:
+		// Create a short node pointing to the hash node
 		s := &ShortNode{
 			Path: nibblesToKey(path),
 			Key:  nibblesToKey(key2[:l]),
@@ -266,6 +282,7 @@ func (t *Trie) resolveAndTrack(n *HashNode, key2, path []byte) (TrieNode, error)
 		n.Pre = n.Pre[l:]
 		return s, nil
 	default:
+		// Create a full node with the hash node in appropriate branch
 		f := &FullNode{}
 		f.Path = nibblesToKey(path)
 		if len(n.Pre) > 0 && int(n.Pre[0]) < 16 {
@@ -277,6 +294,7 @@ func (t *Trie) resolveAndTrack(n *HashNode, key2, path []byte) (TrieNode, error)
 	}
 }
 
+// fixedPath recursively updates node paths after insertion
 func (t *Trie) fixedPath(node TrieNode, path []byte) {
 	if node == nil {
 		return
@@ -299,12 +317,15 @@ func (t *Trie) fixedPath(node TrieNode, path []byte) {
 	}
 }
 
+// newFlag creates a new flag for node (placeholder for future use)
 func (t *Trie) newFlag() interface{} { return nil }
 
+// CalculateRequiredHashes2 computes the number of required hashes for given transactions
 func (t *Trie) CalculateRequiredHashes2(transactions []*types.Transaction) int {
 	if t.Root == nil || len(transactions) == 0 {
 		return 0
 	}
+	// Convert transaction hashes to nibbles for comparison
 	txHashes := make([][]byte, len(transactions))
 	for i, tx := range transactions {
 		txHashes[i] = keyToNibbles(tx.Hash().Bytes())
@@ -316,11 +337,13 @@ func (t *Trie) CalculateRequiredHashes2(transactions []*types.Transaction) int {
 	return 0
 }
 
+// calculateHashes recursively determines if nodes require hashing
 func (t *Trie) calculateHashes(node TrieNode, transactions [][]byte) (bool, int) {
 	if node == nil {
 		return false, 0
 	}
 	if hashNode, ok := node.(*HashNode); ok {
+		// Check if this leaf node matches any transaction
 		nodeKey := keyToNibbles(hashNode.Key)
 		for _, txHash := range transactions {
 			if bytes.Equal(nodeKey, txHash) {
@@ -330,12 +353,14 @@ func (t *Trie) calculateHashes(node TrieNode, transactions [][]byte) (bool, int)
 		return false, 0
 	}
 	if shortNode, ok := node.(*ShortNode); ok {
+		// Continue checking in the short node's value
 		return t.calculateHashes(shortNode.Val, transactions)
 	}
 	if fullNode, ok := node.(*FullNode); ok {
-		allFalseCount := 0
-		totalNeedSum := 0
-		anyTrueFlag := false
+		allFalseCount := 0   // Count of children that don't contain any targets
+		totalNeedSum := 0    // Sum of hashes needed by children that do contain targets
+		anyTrueFlag := false // Flag if any child contains targets
+
 		for i := 0; i < 16; i++ {
 			if fullNode.Children[i] == nil {
 				continue
@@ -348,6 +373,7 @@ func (t *Trie) calculateHashes(node TrieNode, transactions [][]byte) (bool, int)
 				allFalseCount++
 			}
 		}
+
 		if anyTrueFlag {
 			return true, totalNeedSum + allFalseCount
 		}
@@ -355,37 +381,27 @@ func (t *Trie) calculateHashes(node TrieNode, transactions [][]byte) (bool, int)
 	return false, 0
 }
 
+// BuildMPTTree constructs an MPT from a list of transactions
 func BuildMPTTree(trie *Trie, transactions []*types.Transaction) (*Trie, time.Duration) {
 	startTime := time.Now()
+
+	// Insert each transaction into the trie
 	for _, tr := range transactions {
 		txHash := tr.Hash().Bytes()
 		txData, _ := tr.MarshalBinary()
 		if err := trie.Insert(txHash, txData); err != nil {
-			fmt.Printf("插入交易失败: %v\n", err)
+			fmt.Printf("Failed to insert transaction: %v\n", err)
 			continue
 		}
 	}
+
+	// Update paths and compute hashes
 	trie.fixedPath(trie.Root, []byte{})
 	trie.ComputeHash(trie.Root)
 	return trie, time.Since(startTime)
 }
 
-func startWith(nodeKey, key []byte) (int, bool) {
-	if len(nodeKey) == 0 {
-		return 0, false
-	}
-	minLen := len(nodeKey)
-	if len(key) < minLen {
-		minLen = len(key)
-	}
-	for i := 0; i < minLen; i++ {
-		if key[i] != nodeKey[i] {
-			return i, false
-		}
-	}
-	return minLen, true
-}
-
+// ComputeHash recursively computes hashes for all nodes in the trie
 func (t *Trie) ComputeHash(node TrieNode) common.Hash {
 	if node == nil {
 		return common.Hash{}
@@ -395,15 +411,18 @@ func (t *Trie) ComputeHash(node TrieNode) common.Hash {
 		if n.Hash != (common.Hash{}) {
 			return n.Hash
 		}
+		// Leaf node: hash is computed from prefix and value
 		data := append(n.Pre, n.Value...)
 		n.Hash = crypto.Keccak256Hash(data)
 		return n.Hash
 	case *ShortNode:
+		// Short node: hash is computed from key and child hash
 		childHash := t.ComputeHash(n.Val)
 		data := append(keyToNibbles(n.Key), childHash.Bytes()...)
 		n.hashVal = crypto.Keccak256Hash(data)
 		return n.hashVal
 	case *FullNode:
+		// Full node: hash is computed from all children hashes
 		var data []byte
 		for i, child := range n.Children {
 			if child != nil {
@@ -419,6 +438,7 @@ func (t *Trie) ComputeHash(node TrieNode) common.Hash {
 	}
 }
 
+// PrintTrie recursively prints the trie structure for debugging
 func (t *Trie) PrintTrie(node TrieNode, indent string) {
 	if node == nil {
 		fmt.Println(indent + "nil")
