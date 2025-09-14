@@ -8,23 +8,23 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// MerkleTreeNode 表示Merkle树中的一个节点
+// MerkleTreeNode represents a node in the Merkle tree
 type MerkleTreeNode struct {
-	Parent *MerkleTreeNode
-	Left   *MerkleTreeNode
-	Right  *MerkleTreeNode
-	Hash   common.Hash
-	Tx     *types.Transaction // 使用以太坊的Transaction类型
+	Parent *MerkleTreeNode    // Parent node in the tree
+	Left   *MerkleTreeNode    // Left child node
+	Right  *MerkleTreeNode    // Right child node
+	Hash   common.Hash        // Hash value of this node
+	Tx     *types.Transaction // Ethereum transaction (only for leaf nodes)
 }
 
-// MerkleTree 表示整个Merkle树结构
+// MerkleTree represents the complete Merkle tree structure
 type MerkleTree struct {
-	Transactions []*types.Transaction // 使用以太坊的Transaction类型
-	Nodes        []*MerkleTreeNode
-	Root         *MerkleTreeNode
+	Transactions []*types.Transaction // List of transactions in the tree
+	Nodes        []*MerkleTreeNode    // All nodes in the tree
+	Root         *MerkleTreeNode      // Root node of the tree
 }
 
-// NewMerkleTree 创建并初始化一个新的Merkle树
+// NewMerkleTree creates and initializes a new Merkle tree from transactions
 func NewMerkleTree(transactions []*types.Transaction) *MerkleTree {
 	tree := &MerkleTree{
 		Transactions: transactions,
@@ -33,20 +33,20 @@ func NewMerkleTree(transactions []*types.Transaction) *MerkleTree {
 	return tree
 }
 
-// createTree 构建Merkle树
+// createTree constructs the Merkle tree and returns the time taken
 func (mt *MerkleTree) createTree() time.Duration {
 	start := time.Now()
 
-	// 创建叶子节点
+	// Create leaf nodes from transactions
 	var nodes []*MerkleTreeNode
 	for _, tx := range mt.Transactions {
-		hash := tx.Hash() // 使用交易的哈希方法
+		hash := tx.Hash() // Get transaction hash
 		node := &MerkleTreeNode{Hash: hash, Tx: tx}
 		nodes = append(nodes, node)
 	}
 	mt.Nodes = nodes
 
-	// 构建树结构
+	// Build tree structure from bottom up
 	for len(nodes) > 1 {
 		var newLevel []*MerkleTreeNode
 
@@ -57,14 +57,14 @@ func (mt *MerkleTree) createTree() time.Duration {
 			if i+1 < len(nodes) {
 				right = nodes[i+1]
 			} else {
-				// 如果节点数为奇数，复制最后一个节点
+				// If odd number of nodes, duplicate the last node
 				right = &MerkleTreeNode{
 					Hash: left.Hash,
 					Tx:   left.Tx,
 				}
 			}
 
-			// 组合左右节点的哈希并计算父节点哈希
+			// Combine left and right hashes to create parent hash
 			combinedHash := mt.computeCombinedHash(left.Hash, right.Hash)
 			parent := &MerkleTreeNode{
 				Left:  left,
@@ -84,20 +84,20 @@ func (mt *MerkleTree) createTree() time.Duration {
 	return time.Since(start)
 }
 
-// computeCombinedHash 计算两个哈希的组合哈希
+// computeCombinedHash computes the hash of two combined hashes
 func (mt *MerkleTree) computeCombinedHash(hash1, hash2 common.Hash) common.Hash {
-	// 将两个哈希值拼接后计算哈希
+	// Concatenate the two hashes and compute Keccak256 hash
 	data := append(hash1.Bytes(), hash2.Bytes()...)
 	return crypto.Keccak256Hash(data)
 }
 
-// GetRequiredHashes 获取验证指定交易所需的哈希值数量
+// GetRequiredHashes calculates the number of additional hashes needed to verify specified transactions
 func (mt *MerkleTree) GetRequiredHashes(transactions []*types.Transaction) int {
 	if len(transactions) == 0 {
 		return 0
 	}
 
-	// 将目标交易转换为哈希集合
+	// Convert target transactions to a set of hashes for efficient lookup
 	targetHashes := make(map[common.Hash]bool)
 	for _, tx := range transactions {
 		targetHashes[tx.Hash()] = true
@@ -107,13 +107,13 @@ func (mt *MerkleTree) GetRequiredHashes(transactions []*types.Transaction) int {
 	return needs
 }
 
-// calculateRequiredHashes 递归计算所需的哈希值
+// calculateRequiredHashes recursively determines which hashes are needed to verify target hashes
 func (mt *MerkleTree) calculateRequiredHashes(node *MerkleTreeNode, targetHashes map[common.Hash]bool) (bool, int) {
 	if node == nil {
 		return false, 0
 	}
 
-	// 如果是叶子节点，检查是否在目标集合中
+	// Leaf node: check if it's one of our targets
 	if node.Left == nil && node.Right == nil {
 		if _, exists := targetHashes[node.Hash]; exists {
 			return true, 0
@@ -121,35 +121,39 @@ func (mt *MerkleTree) calculateRequiredHashes(node *MerkleTreeNode, targetHashes
 		return false, 0
 	}
 
+	// Check both subtrees
 	leftFound, leftNeeds := mt.calculateRequiredHashes(node.Left, targetHashes)
 	rightFound, rightNeeds := mt.calculateRequiredHashes(node.Right, targetHashes)
 
 	if leftFound && rightFound {
-		// 如果左右子树都包含目标，需要左右子树所需的哈希之和
+		// Both subtrees contain targets: sum their needs
 		return true, leftNeeds + rightNeeds
 	} else if leftFound {
-		// 如果只有左子树包含目标，需要左子树所需的哈希加上右子树的哈希
+		// Only left subtree contains targets: need left needs plus right subtree's hash
 		return true, leftNeeds + 1
 	} else if rightFound {
-		// 如果只有右子树包含目标，需要右子树所需的哈希加上左子树的哈希
+		// Only right subtree contains targets: need right needs plus left subtree's hash
 		return true, rightNeeds + 1
 	}
 
-	// 如果都不包含目标，返回false
+	// No targets found in this subtree
 	return false, 0
 }
 
-// GetProof 获取特定交易的Merkle证明
+// GetProof generates a Merkle proof for a specific transaction
 func (mt *MerkleTree) GetProof(tx *types.Transaction) []common.Hash {
 	var proof []common.Hash
 	txHash := tx.Hash()
 	node := mt.findLeafNode(txHash)
 
+	// Traverse up the tree to collect proof hashes
 	for node != nil && node.Parent != nil {
 		parent := node.Parent
 		if parent.Left == node {
+			// If current node is left child, add right sibling to proof
 			proof = append(proof, parent.Right.Hash)
 		} else {
+			// If current node is right child, add left sibling to proof
 			proof = append(proof, parent.Left.Hash)
 		}
 		node = parent
@@ -158,7 +162,7 @@ func (mt *MerkleTree) GetProof(tx *types.Transaction) []common.Hash {
 	return proof
 }
 
-// findLeafNode 查找包含特定交易哈希的叶子节点
+// findLeafNode locates the leaf node containing a specific transaction hash
 func (mt *MerkleTree) findLeafNode(txHash common.Hash) *MerkleTreeNode {
 	for _, node := range mt.Nodes {
 		if node.Hash == txHash {
@@ -168,13 +172,15 @@ func (mt *MerkleTree) findLeafNode(txHash common.Hash) *MerkleTreeNode {
 	return nil
 }
 
-// VerifyProof 验证Merkle证明
+// VerifyProof verifies a Merkle proof for a transaction
 func (mt *MerkleTree) VerifyProof(tx *types.Transaction, proof []common.Hash) bool {
 	hash := tx.Hash()
 
+	// Recompute the root hash using the proof
 	for _, proofHash := range proof {
 		hash = mt.computeCombinedHash(hash, proofHash)
 	}
 
+	// Check if the computed root matches the actual root
 	return hash == mt.Root.Hash
 }

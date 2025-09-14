@@ -89,11 +89,9 @@ mytrees/
       ```bash 
       go test -v cmpt/ClusteredMerklePatriciaTrie.go cmpt/cmpt_test.go
       ```
-      
       ```bash
       go test -v kmerkle/K-MerkleTree.go kmerkle/kmerkle_test.go
       ```
-      
       ```bash
       go test -v merkle/MerkleTree.go merkle/merkle_test.go
       ```
