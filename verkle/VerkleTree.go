@@ -1,219 +1,39 @@
-// package verkle
-//
-// import (
-//
-//	"log"
-//	"time"
-//
-//	"github.com/ethereum/go-ethereum/common"
-//	"github.com/ethereum/go-ethereum/core/types"
-//	"github.com/ethereum/go-ethereum/crypto"
-//
-// )
-//
-// // VerkleTree 表示一个Verkle树结构 K=16
-//
-// const K int = 16
-//
-//	type Node struct {
-//		Children []*Node
-//		IsLeaf   bool
-//		TxHash   common.Hash
-//		Hash     common.Hash
-//		Parent   *Node
-//	}
-//
-//	type VerkleTree struct {
-//		Root *Node
-//		K    int
-//	}
-//
-// // NewVerkleTreeFromTransactions 从交易列表创建Verkle树
-//
-//	func NewVerkleTreeFromTransactions(txs []*types.Transaction) *VerkleTree {
-//		start := time.Now()
-//		defer func() {
-//			elapsed := time.Since(start)
-//			log.Printf("Verkle树构建耗时: %v", elapsed)
-//		}()
-//
-//		leafHashes := make([]common.Hash, len(txs))
-//		for i, tx := range txs {
-//			leafHashes[i] = tx.Hash()
-//		}
-//		return NewVerkleTreeFromHashes(leafHashes)
-//	}
-//
-// // NewVerkleTreeFromHashes 从哈希列表创建Verkle树
-//
-//	func NewVerkleTreeFromHashes(leafHashes []common.Hash) *VerkleTree {
-//		t := &VerkleTree{K: K}
-//		if len(leafHashes) == 0 {
-//			return t
-//		}
-//
-//		currentLevel := make([]*Node, len(leafHashes))
-//		for i := range leafHashes {
-//			currentLevel[i] = &Node{IsLeaf: true, TxHash: leafHashes[i]}
-//		}
-//
-//		for len(currentLevel) > 1 {
-//			var nextLevel []*Node
-//			for i := 0; i < len(currentLevel); i += t.K {
-//				end := i + t.K
-//				if end > len(currentLevel) {
-//					end = len(currentLevel)
-//				}
-//				children := currentLevel[i:end]
-//				parent := &Node{Children: make([]*Node, len(children))}
-//				copy(parent.Children, children)
-//				for _, child := range children {
-//					child.Parent = parent
-//				}
-//				nextLevel = append(nextLevel, parent)
-//			}
-//			currentLevel = nextLevel
-//		}
-//
-//		t.Root = currentLevel[0]
-//		t.ComputeHashes()
-//		return t
-//	}
-//
-// // ComputeHashes 计算树中所有节点的哈希值
-//
-//	func (t *VerkleTree) ComputeHashes() {
-//		if t == nil || t.Root == nil {
-//			return
-//		}
-//		computeHashesPostOrder_vk(t.Root)
-//	}
-//
-// // computeHashesPostOrder_vk 后序遍历计算节点哈希
-//
-//	func computeHashesPostOrder_vk(node *Node) common.Hash {
-//		if node == nil {
-//			return common.Hash{}
-//		}
-//		if node.IsLeaf {
-//			node.Hash = node.TxHash
-//			return node.Hash
-//		}
-//
-//		buf := make([]byte, 0, len(node.Children)*common.HashLength)
-//		for _, child := range node.Children {
-//			childHash := computeHashesPostOrder_vk(child)
-//			buf = append(buf, childHash.Bytes()...)
-//		}
-//		node.Hash = crypto.Keccak256Hash(buf)
-//		return node.Hash
-//	}
-//
-// // GetRequiredHashes 获取验证指定交易所需的哈希值数量
-//
-//	func (t *VerkleTree) GetRequiredHashes(targets []common.Hash) int {
-//		if t == nil || t.Root == nil || len(targets) == 0 {
-//			return 0
-//		}
-//		set := make(map[common.Hash]struct{}, len(targets))
-//		for _, h := range targets {
-//			set[h] = struct{}{}
-//		}
-//		flag, needs := calculateRequiredHashes_vk(t.Root, set)
-//		if flag {
-//			return needs
-//		}
-//		return 0
-//	}
-//
-// // GetRequiredHashesForTxs 获取验证指定交易所需的哈希值数量（交易对象版本）
-//
-//	func (t *VerkleTree) GetRequiredHashesForTxs(targetTxs []*types.Transaction) int {
-//		targets := make([]common.Hash, len(targetTxs))
-//		for i, tx := range targetTxs {
-//			targets[i] = tx.Hash()
-//		}
-//		return t.GetRequiredHashes(targets)
-//	}
-//
-// // calculateRequiredHashes_vk 递归计算所需的哈希值
-//
-//	func calculateRequiredHashes_vk(node *Node, targets map[common.Hash]struct{}) (bool, int) {
-//		if node == nil {
-//			return false, 0
-//		}
-//		if node.IsLeaf {
-//			_, present := targets[node.TxHash]
-//			if present {
-//				return true, 0
-//			}
-//			return false, 0
-//		}
-//
-//		allFalseCount := 0
-//		totalNeedSum := 0
-//		anyTrueFlag := false
-//
-//		for _, child := range node.Children {
-//			if child == nil {
-//				continue
-//			}
-//			flag, need := calculateRequiredHashes_vk(child, targets)
-//			if flag {
-//				anyTrueFlag = true
-//				totalNeedSum += need
-//			} else {
-//				allFalseCount++
-//			}
-//		}
-//
-//		if anyTrueFlag {
-//			return true, totalNeedSum + allFalseCount
-//		}
-//		return false, 0
-//	}
 package verkle
 
 import (
-	"log"
-	"time"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// VerkleTree 表示一个Verkle树结构 K=16
+// VerkleTree represents a Verkle tree structure with branching factor K=16
 const K int = 16
 
+// Node represents a node in the Verkle tree
 type Node struct {
-	Children    []*Node
-	IsLeaf      bool
-	TxHash      common.Hash
-	Hash        common.Hash
-	Parent      *Node
-	Transaction *types.Transaction // 添加交易字段
+	Children    []*Node            // Child nodes (up to K children)
+	IsLeaf      bool               // Flag indicating if this is a leaf node
+	TxHash      common.Hash        // Transaction hash (only for leaf nodes)
+	Hash        common.Hash        // Hash value of this node
+	Parent      *Node              // Reference to parent node
+	Transaction *types.Transaction // Ethereum transaction (only for leaf nodes)
 }
 
+// VerkleTree represents the complete Verkle tree structure
 type VerkleTree struct {
-	Root *Node
-	K    int
+	Root *Node // Root node of the tree
+	K    int   // Branching factor (arity) of the tree
 }
 
-// NewVerkleTreeFromTransactions 从交易列表创建Verkle树
+// NewVerkleTreeFromTransactions creates a new Verkle tree from a list of transactions
 func NewVerkleTreeFromTransactions(txs []*types.Transaction) *VerkleTree {
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("Verkle树构建耗时: %v", elapsed)
-	}()
 
 	t := &VerkleTree{K: K}
 	if len(txs) == 0 {
 		return t
 	}
 
-	// 创建叶子节点
+	// Create leaf nodes from transactions
 	currentLevel := make([]*Node, len(txs))
 	for i, tx := range txs {
 		currentLevel[i] = &Node{
@@ -223,7 +43,7 @@ func NewVerkleTreeFromTransactions(txs []*types.Transaction) *VerkleTree {
 		}
 	}
 
-	// 构建树结构
+	// Build tree structure from bottom up
 	for len(currentLevel) > 1 {
 		var nextLevel []*Node
 		for i := 0; i < len(currentLevel); i += t.K {
@@ -231,9 +51,13 @@ func NewVerkleTreeFromTransactions(txs []*types.Transaction) *VerkleTree {
 			if end > len(currentLevel) {
 				end = len(currentLevel)
 			}
+
+			// Create parent node for this group of children
 			children := currentLevel[i:end]
 			parent := &Node{Children: make([]*Node, len(children))}
 			copy(parent.Children, children)
+
+			// Set parent reference for all children
 			for _, child := range children {
 				child.Parent = parent
 			}
@@ -247,7 +71,7 @@ func NewVerkleTreeFromTransactions(txs []*types.Transaction) *VerkleTree {
 	return t
 }
 
-// ComputeHashes 计算树中所有节点的哈希值
+// ComputeHashes calculates and sets the hash values for all nodes in the tree
 func (t *VerkleTree) ComputeHashes() {
 	if t == nil || t.Root == nil {
 		return
@@ -255,11 +79,13 @@ func (t *VerkleTree) ComputeHashes() {
 	computeHashesPostOrder_vk(t.Root)
 }
 
-// computeHashesPostOrder_vk 后序遍历计算节点哈希
+// computeHashesPostOrder_vk recursively computes node hashes using a post-order traversal
 func computeHashesPostOrder_vk(node *Node) common.Hash {
 	if node == nil {
 		return common.Hash{}
 	}
+
+	// Leaf node: hash is the transaction hash itself
 	if node.IsLeaf {
 		if node.Hash == (common.Hash{}) {
 			node.Hash = node.TxHash
@@ -267,6 +93,7 @@ func computeHashesPostOrder_vk(node *Node) common.Hash {
 		return node.Hash
 	}
 
+	// Internal node: concatenate child hashes and hash the result
 	buf := make([]byte, 0, len(node.Children)*common.HashLength)
 	for _, child := range node.Children {
 		childHash := computeHashesPostOrder_vk(child)
@@ -276,15 +103,19 @@ func computeHashesPostOrder_vk(node *Node) common.Hash {
 	return node.Hash
 }
 
-// GetRequiredHashes 获取验证指定交易所需的哈希值数量
+// GetRequiredHashes calculates the number of additional hashes needed to verify specified target hashes
 func (t *VerkleTree) GetRequiredHashes(targets []common.Hash) int {
 	if t == nil || t.Root == nil || len(targets) == 0 {
 		return 0
 	}
+
+	// Convert target hashes to a set for efficient lookup
 	set := make(map[common.Hash]struct{}, len(targets))
 	for _, h := range targets {
 		set[h] = struct{}{}
 	}
+
+	// Calculate required hashes
 	flag, needs := calculateRequiredHashes_vk(t.Root, set)
 	if flag {
 		return needs
@@ -292,35 +123,36 @@ func (t *VerkleTree) GetRequiredHashes(targets []common.Hash) int {
 	return 0
 }
 
-// GetRequiredHashesForTxs 获取验证指定交易所需的哈希值数量（交易对象版本）
+// GetRequiredHashesForTxs calculates required hashes for a list of target transactions
 func (t *VerkleTree) GetRequiredHashesForTxs(targetTxs []*types.Transaction) int {
+	// Convert transactions to their hashes
 	targets := make([]common.Hash, len(targetTxs))
 	for i, tx := range targetTxs {
 		targets[i] = tx.Hash()
 	}
+
 	return t.GetRequiredHashes(targets)
 }
 
-// calculateRequiredHashes_vk 递归计算所需的哈希值
-
+// calculateRequiredHashes_vk recursively determines which hashes are needed to verify target hashes
 func calculateRequiredHashes_vk(node *Node, targets map[common.Hash]struct{}) (bool, int) {
 	if node == nil {
 		return false, 0
 	}
 
-	// 如果是叶子节点
+	// Leaf node: check if it's one of our targets
 	if node.IsLeaf {
 		_, present := targets[node.TxHash]
 		if present {
-			return true, 1 // 根据Python版本，叶子节点返回1
+			return true, 1 // Leaf node returns 1 according to Python version
 		}
 		return false, 0
 	}
 
-	totalNeedSum := 0
-	anyTrueFlag := false
+	totalNeedSum := 0    // Sum of hashes needed by children that contain targets
+	anyTrueFlag := false // Flag if any child contains targets
 
-	// 遍历所有子节点
+	// Check all children
 	for _, child := range node.Children {
 		if child == nil {
 			continue
@@ -332,14 +164,14 @@ func calculateRequiredHashes_vk(node *Node, targets map[common.Hash]struct{}) (b
 		}
 	}
 
+	// If any child contains targets, we need to include this node's hash
 	if anyTrueFlag {
-		
 		return true, totalNeedSum + 1
 	}
 	return false, 0
 }
 
-// 辅助函数：比较两个交易是否相等
+// isTransactionEqual compares two transactions for equality
 func isTransactionEqual(tx1, tx2 *types.Transaction) bool {
 	if tx1 == nil || tx2 == nil {
 		return tx1 == tx2
