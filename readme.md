@@ -70,8 +70,7 @@ mytrees/
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/Schiz0mania/geth-test.git
-   cd geth-test/mytrees
+   git clone https://github.com/Schiz0mania/core-codes-of-C-MPT.git
    ```
 
 2. **Install Go Dependencies**
