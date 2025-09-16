@@ -71,6 +71,7 @@ mytrees/
 1. **Clone the Repository**
    ```bash
    git clone https://github.com/Schiz0mania/core-codes-of-C-MPT.git
+   cd ./core-codes-of-C-MPT
    ```
 
 2. **Install Go Dependencies**
